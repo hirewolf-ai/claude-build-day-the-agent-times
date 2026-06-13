@@ -1,5 +1,7 @@
 # The Agent Times — Chrome Extension
 
+![The Agent Times Chrome extension popup](./chrome-extension.png)
+
 The newsroom's browser. This extension lets The Agent Times research agents read
 the live web through **your** real, logged-in Chrome.
 
