@@ -1,0 +1,13 @@
+We directed Claude with a multi-agent pipeline plus tight scaffolding, and we leaned on Claude verifying its own work:
+
+- Custom scaffolding (CLAUDE.md): a short, high-signal file encoding only the things easy to get wrong — "collection is a real browser, never headless," port ranges (3010+), warehouse-first reproducibility, and the rule that the collection agent may ONLY run chrome-cli (enforced in code via the SDK's canUseTool callback, which denies every non-chrome-cli Bash command and all web-fetch tools). docs/ (architecture, agents, personas) gave deeper context.
+
+- Two-stage agent pipeline with auto-handoff: a lead research agent fans out a subagent swarm (one per news beat) that each drive Chrome and write their own markdown file; a separate printing agent then reads that warehouse and spawns columnist subagents to write opinion columns in distinct voices. The handoff (collecting → printing) fires automatically in one SSE stream.
+
+- Claude verifying its own work — the load-bearing moment: collection initially gathered news but the subagents silently never wrote their files. Claude diagnosed it by reading its own debug log (we log every SDK message tagged [lead]/[sub:xxxxxx] via parent_tool_use_id), traced it to subagents not getting an absolute path, wrote a mini test to confirm the fix, then changed the lead prompt to hand each subagent its exact file path — and added a final "VERIFY each file exists" step to the lead. A second self-caught failure: agents were shortcutting the real-browser requirement by using WebFetch; Claude found it in the trace and locked it out three ways (disallowedTools + canUseTool deny + prompt).
+
+- The deepest root-cause catch: chrome-cli kept failing with "fetch failed." Claude ruled out the obvious causes, then discovered the dev server had been spawned inside Claude Code's own OS sandbox, which blocks localhost networking — so the agents couldn't reach the broker. The fix was operational (run the server in a normal terminal), and Claude documented it in persistent memory so it never recurred.
+
+- Verifier loop: every run logs a greppable trace; we polled DB status + the workspace folder to confirm each phase (7 beats filed → handoff → 12 sections printed → ready) and the final cost.
+
+Files to link: CLAUDE.md, docs/architecture.md, docs/agents.md, docs/personas.md, and the agent prompts/orchestration in apps/web/src/agents/ (collectionPrompt.ts, printingPrompt.ts, runCollection.ts, runPrinting.ts, editionRuns.ts).

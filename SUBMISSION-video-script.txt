@@ -1,0 +1,71 @@
+THE AGENT TIMES — 60-SECOND DEMO SCRIPT + SHOT LIST
+====================================================
+Goal: show the product (agents build a real newspaper), the build (Opus 4.8 +
+Agent SDK + chrome-cli), and the "Claude verified its own work" moment.
+
+Pre-roll checklist (do this BEFORE recording — these take time):
+  [ ] pnpm dev running in a NORMAL terminal (NOT inside Claude) — port 3010
+  [ ] chrome server running — port 3011
+  [ ] Chrome extension loaded + connected ("The Agent Times" group)
+  [ ] You're logged into X in that Chrome
+  [ ] Finished $9.94 edition open in a tab as a fallback:
+      http://localhost:3010/edition/e9bc90ab-2d99-4585-b9cc-dac6cb96b489
+  [ ] Screen recorder set to capture browser + a terminal tile
+  [ ] Have the "Surprise me" quick mode ready (it's ~90s, far faster than a full read)
+
+------------------------------------------------------------------
+0:00–0:08  HOOK — the entry page
+  SCREEN: /read entry box. Type into the prompt: "what's happening in AI today?"
+          (or click a section).
+  SAY: "The Agent Times — a newspaper written entirely by AI agents. I type what
+        I want to read, and Claude agents go gather it."
+
+0:08–0:25  THE SWARM — real browser collection (the WOW)
+  SCREEN: Hit read. Left pane = newsroom feed lighting up ("Reading Reuters…",
+          "The Markets desk is on it."). RIGHT pane = skeleton paper.
+          Quickly flash your real Chrome window — tabs opening/closing on their own.
+  SAY: "These aren't web scrapers — Opus 4.8 is driving my real, logged-in Chrome
+        through a browser extension. A lead agent fans out a subagent per beat —
+        markets, world, tech, culture — each browsing live and filing its own story."
+
+0:25–0:40  THE PRINT — live cinematic layout (the second WOW)
+  SCREEN: Feed flips to "the Design Desk takes over." Sections fade into the paper
+          one by one — lead with a cover photo, columns, opinion columns.
+  SAY: "Then a printing agent reads the warehouse and lays out a New York Times–style
+        front page in HTML — live, section by section. The opinion columns are written
+        by columnist agents, each with its own voice and byline."
+
+0:40–0:50  THE STAMP + FULL PAGE
+  SCREEN: Edition finishes — PRICE stamp appears ($9.94). Click "Full edition" →
+          full-page paper.
+  SAY: "When it's done, it stamps the total agent cost like an old newspaper —
+        this whole edition cost nine dollars and ninety-four cents in Opus 4.8."
+
+0:50–1:00  HOW WE DIRECTED CLAUDE (the judging hook)
+  SCREEN: Split to your editor / terminal: show CLAUDE.md and the canUseTool deny
+          block in runCollection.ts; optionally a debug.log line tagged [sub:xxxxxx].
+  SAY: "We directed Claude with a CLAUDE.md and a hard tool-lock — agents may ONLY
+        drive chrome-cli. And it debugged itself: when subagents gathered news but
+        never wrote files, Claude read its own trace, found the missing file path,
+        wrote a test, and fixed it. All built with Claude Code on Opus 4.8."
+
+------------------------------------------------------------------
+ROUND 2 (3 min, live) — extra beats if you make finalist:
+  - Open CLAUDE.md: read the "collection is a REAL browser, never headless" rule
+    + the chrome-cli-only rule. "This is the brief we gave the model."
+  - Show the canUseTool callback in runCollection.ts denying non-chrome-cli Bash.
+  - Tell the self-fix story end to end: subagents silently not writing → Claude
+    grepped its [lead]/[sub:] debug log → root-caused the missing absolute path →
+    wrote a mini test → patched the lead prompt + added a "VERIFY each file" step.
+  - Bonus catch: the "fetch failed" sandbox root-cause (server spawned inside
+    Claude's OS sandbox blocked localhost) — Claude diagnosed and saved it to memory.
+  - Land on the two-agent pipeline diagram: research swarm → warehouse → print desk
+    → columnist subagents → live paper, one SSE stream, auto-handoff.
+
+TIPS
+  - RECORD THE FULL/QUICK RUN ONCE CLEAN, then narrate over it — don't risk a live
+    timeout on camera. The finished $9.94 edition is your safety net.
+  - Keep the real Chrome window visible for ~2 seconds during collection — the tabs
+    moving on their own is the single most convincing shot.
+  - Mention "Opus 4.8" out loud at least once — judges asked specifically how the
+    model was used.
