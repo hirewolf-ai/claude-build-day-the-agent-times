@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  /* The Agent Times — warm dark canvas, paper-ink accents */
+  --background: #1c1b19;
+  --foreground: #ece7df;
+  --muted: #8c8780;
+  --panel: #252320;
+  --panel-hover: #2c2a26;
+  --border: #38352f;
+  --accent: #d9805a; /* the spark / coffee ember */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-panel: var(--panel);
+  --color-panel-hover: var(--panel-hover);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-blackletter: var(--font-blackletter);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::placeholder {
+  color: var(--muted);
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Entry ↔ builder crossfade (Claude-style transition). */
+.scene {
+  transition: opacity 600ms ease, transform 600ms ease, filter 600ms ease;
+}
+.scene-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.entry-exit {
+  transform: scale(0.97);
+  filter: blur(2px);
+}
+.builder-enter {
+  transform: scale(1);
+}
+.builder-enter-from {
+  transform: scale(1.01);
+}

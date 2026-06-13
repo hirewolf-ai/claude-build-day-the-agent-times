@@ -1,0 +1,335 @@
+#!/usr/bin/env node
+// chrome-cli — thin client for The Agent Times chrome server.
+// Enqueues a command, polls until the extension reports a result, prints it.
+// This is the tool the research agents drive to read the live web.
+//
+// Usage:   chrome-cli <command> [--key value ...] [--timeout 10] [--json]
+// See:     chrome-cli --help
+
+const SERVER =
+  process.env.AGENT_TIMES_SERVER ||
+  process.env.WOLF_SERVER || // legacy fallback
+  "http://localhost:3011";
+
+const HELP = `
+chrome-cli — send commands to The Agent Times Chrome extension via the local server.
+
+USAGE
+  chrome-cli <command> [--key value ...] [options]
+  chrome-cli --help
+  chrome-cli list                       list available extension commands
+  chrome-cli status                     server health + queue depth
+  chrome-cli get <id>                   fetch a past command's result
+  chrome-cli events                     dump recent server event log
+  chrome-cli sessions [--all|--closed]  list tabs the agent opened
+  chrome-cli sessions close             close every still-open agent tab
+  chrome-cli sessions clear             wipe server-side session memory
+  chrome-cli annotate --tabId <id>      screenshot + SoM-numbered overlay
+    --out <path>                        save annotated PNG
+                                        (default: tmp/screenshots/annotated-<timestamp>.png)
+    --sparse-labels                     hide badge when element has descriptive text
+                                        (browser-use behavior; default is to label everything)
+  chrome-cli script --tabId <id>        run a Playwright script in that tab
+    --file <path>                       script body (file)
+    --code "<js>"                       script body (inline)
+    --timeout <ms>                      script execution timeout (default 60000)
+
+OPTIONS
+  --timeout <seconds>   max time to wait for a result   (default: 15)
+  --poll <ms>           poll interval for the result    (default: 250)
+  --json                print raw JSON (default: pretty)
+  --no-wait             enqueue and exit, don't wait for result
+  --server <url>        override server URL             (env: AGENT_TIMES_SERVER)
+
+EXAMPLES
+  # Open a tab in debug mode
+  chrome-cli openTab --url https://linkedin.com
+
+  # Navigate the active tab
+  chrome-cli navigate --url https://news.ycombinator.com
+
+  # All tabs across all windows
+  chrome-cli listAllTabs
+
+  # Focus a specific tab (id from listAllTabs)
+  chrome-cli focusTab --tabId 1234567890
+
+  # Close a tab
+  chrome-cli closeTab --tabId 1234567890
+
+  # Get the result of a past command
+  chrome-cli get 43247b60-1a85-4ea5-90c9-6fb548e3119b
+
+EXTENSION COMMANDS — tabs
+  openTab          { url, focus? }          open new tab in debug mode + Wolf group
+                                            focus=true brings it to the front (default false)
+  navigate         { url, tabId? }          navigate (active tab if tabId omitted)
+  closeTab         { tabId? }               close (active tab if tabId omitted)
+  focusTab         { tabId?, windowId? }    bring window+tab to front
+  listTabs                                  flat list of all tabs
+  listAllTabs                               tabs grouped by window
+  openDebugTab     { url }                  alias for openTab
+  detachDebugger   { tabId? }               detach CDP
+
+EXTENSION COMMANDS — agent loop (Playwright-shaped, raw CDP)
+  get_visible_dom  { tabId?, format?, viewportThreshold? }
+                                            SoM-style snapshot, browser-use port
+                                            format = "text" (default) | "json"
+                                            viewportThreshold = px slack (default 1000, "null" = whole page)
+  screenshot       { tabId?, format?, quality?, fullPage? }
+                                            png/jpeg base64 dataUrl
+  get_attrs        { tabId?, id, attrs? }   read attributes of a backendNodeId — no click
+                                            attrs="href,target" or omit for all
+                                            <a> also exposes href_absolute (resolved URL)
+  click_id         { tabId?, id }           click by stable backendNodeId from get_visible_dom
+  click_at         { tabId?, x, y, button?, clickCount? }
+                                            vision-only click at viewport coordinates
+                                            button = "left" | "right" | "middle"
+                                            clickCount = 2 for double-click
+  type_id          { tabId?, id, text, submit?, clear? }
+                                            focus element by backendNodeId and type
+  click            { tabId?, selector, nth? }    click by CSS selector
+  evaluate         { tabId?, expression, awaitPromise? }
+                                            run JS, returns value
+  scroll           { tabId?, by?, to?, into? }   by=px|"page", to="top"|"bottom", into=backendNodeId
+  press_key        { tabId?, key, modifiers? }   Enter/Escape/Tab/ArrowDown etc
+  wait_for_load    { tabId?, timeout?, idleMs? } wait for ready + network idle
+  get_url          { tabId? }
+  get_title        { tabId? }
+  go_back / go_forward / reload { tabId? }
+`;
+
+function parseArgs(argv) {
+  const out = { _: [], flags: {}, args: {} };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--help" || a === "-h") {
+      out.flags.help = true;
+    } else if (a === "--json") {
+      out.flags.json = true;
+    } else if (a === "--no-wait") {
+      out.flags.noWait = true;
+    } else if (a === "--timeout") {
+      out.flags.timeout = Number(argv[++i]);
+    } else if (a === "--poll") {
+      out.flags.poll = Number(argv[++i]);
+    } else if (a === "--server") {
+      out.flags.server = argv[++i];
+    } else if (a.startsWith("--")) {
+      const key = a.slice(2);
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith("--")) {
+        out.args[key] = true; // boolean flag
+      } else {
+        out.args[key] = coerce(next);
+        i++;
+      }
+    } else {
+      out._.push(a);
+    }
+  }
+  return out;
+}
+
+function coerce(v) {
+  if (v === "true") return true;
+  if (v === "false") return false;
+  if (/^-?\d+$/.test(v)) return Number(v);
+  if (/^-?\d+\.\d+$/.test(v)) return Number(v);
+  return v;
+}
+
+function print(obj, pretty) {
+  if (pretty) console.log(JSON.stringify(obj, null, 2));
+  else console.log(JSON.stringify(obj));
+}
+
+async function fetchJson(url, init) {
+  const res = await fetch(url, init);
+  const text = await res.text();
+  if (res.status === 204) return { status: 204 };
+  let body;
+  try { body = JSON.parse(text); } catch { body = text; }
+  return { status: res.status, body };
+}
+
+async function enqueue(server, command, args) {
+  const { status, body } = await fetchJson(`${server}/commands`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ command, args }),
+  });
+  if (status !== 201) throw new Error(`enqueue failed (${status}): ${JSON.stringify(body)}`);
+  return body;
+}
+
+async function getResult(server, id) {
+  const { status, body } = await fetchJson(`${server}/commands/${id}`);
+  if (status !== 200) throw new Error(`get failed (${status}): ${JSON.stringify(body)}`);
+  return body;
+}
+
+async function waitForResult(server, id, timeoutSec, pollMs) {
+  const deadline = Date.now() + timeoutSec * 1000;
+  while (Date.now() < deadline) {
+    const res = await getResult(server, id);
+    if (res.status === "completed") return res;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  throw new Error(`timeout after ${timeoutSec}s waiting for ${id}`);
+}
+
+async function main() {
+  const parsed = parseArgs(process.argv.slice(2));
+  const pretty = !parsed.flags.json;
+  const server = parsed.flags.server || SERVER;
+
+  if (parsed.flags.help || parsed._.length === 0) {
+    console.log(HELP.trim());
+    return;
+  }
+
+  const cmd = parsed._[0];
+
+  // Local meta-commands
+  if (cmd === "list") {
+    console.log(HELP.split("EXTENSION COMMANDS")[1].trim());
+    return;
+  }
+
+  if (cmd === "status") {
+    const { body } = await fetchJson(`${server}/health`);
+    print(body, pretty);
+    return;
+  }
+
+  if (cmd === "events") {
+    const { body } = await fetchJson(`${server}/events`);
+    print(body, pretty);
+    return;
+  }
+
+  if (cmd === "get") {
+    const id = parsed._[1];
+    if (!id) throw new Error("usage: chrome-cli get <id>");
+    print(await getResult(server, id), pretty);
+    return;
+  }
+
+  if (cmd === "annotate") {
+    const tabId = parsed.args.tabId;
+    if (tabId == null) throw new Error("annotate requires --tabId");
+    const fs = require("fs");
+    const path = require("path");
+    // Screenshots land next to the CLI (apps/chrome/tmp/screenshots), overridable via env.
+    const SHOT_DIR = process.env.AGENT_TIMES_SHOT_DIR || path.join(__dirname, "..", "tmp", "screenshots");
+    fs.mkdirSync(SHOT_DIR, { recursive: true });
+    // ISO-ish filename safe for filesystems: 2026-05-28T19-15-42-123Z
+    const stamp = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, (m) => m.replace(".", "-"));
+    const outPath = parsed.args.out || path.join(SHOT_DIR, `annotated-${stamp}.png`);
+    // Default: label everything (filterShortLabels = false). Opt-in to the
+    // browser-use "hide labels on text-bearing elements" mode with --sparse-labels.
+    const filterShortLabels = !!(parsed.args.sparseLabels || parsed.args["sparse-labels"]);
+
+    // Run screenshot + get_visible_dom in parallel for speed.
+    const shotPromise = enqueue(server, "screenshot", { tabId: Number(tabId), format: "png" })
+      .then((e) => waitForResult(server, e.id, parsed.flags.timeout ?? 30, parsed.flags.poll ?? 250));
+    const domPromise = enqueue(server, "get_visible_dom", { tabId: Number(tabId), format: "json" })
+      .then((e) => waitForResult(server, e.id, parsed.flags.timeout ?? 30, parsed.flags.poll ?? 250));
+    const [shot, dom] = await Promise.all([shotPromise, domPromise]);
+    if (!shot.ok) throw new Error(`screenshot failed: ${shot.error}`);
+    if (!dom.ok) throw new Error(`get_visible_dom failed: ${dom.error}`);
+
+    const dataUrl = shot.result.dataUrl;
+    const b64 = dataUrl.split(",", 2)[1];
+    // Need to detect dpr to scale bboxes — sniff via PNG width / known viewport.
+    // Simpler: take dpr from window.devicePixelRatio via an evaluate call.
+    const dprEnq = await enqueue(server, "evaluate", { tabId: Number(tabId), expression: "devicePixelRatio" });
+    const dprRes = await waitForResult(server, dprEnq.id, 10, 250);
+    const dpr = Number(dprRes?.result?.value) || 1;
+
+    const { body } = await fetchJson(`${server}/annotate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        screenshot_b64: b64,
+        nodes: dom.result.nodes,
+        dpr,
+        filterShortLabels,
+      }),
+    });
+    if (!body.ok) throw new Error(`annotate failed: ${body.error}`);
+
+    fs.writeFileSync(outPath, Buffer.from(body.annotated_b64, "base64"));
+    print({ ok: true, path: outPath, count: body.count, dpr }, pretty);
+    return;
+  }
+
+  if (cmd === "script") {
+    const tabId = parsed.args.tabId;
+    if (tabId == null) throw new Error("script requires --tabId");
+    let code = parsed.args.code;
+    if (parsed.args.file) {
+      const fs = require("fs");
+      code = fs.readFileSync(parsed.args.file, "utf8");
+    }
+    if (!code) throw new Error("script requires --file <path> or --code \"<js>\"");
+    const timeout = parsed.args.timeout ?? parsed.flags.timeout ?? 60_000;
+    const { status, body } = await fetchJson(`${server}/scripts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tabId: Number(tabId), code, timeout: Number(timeout) }),
+    });
+    if (status !== 200) throw new Error(`script failed (${status}): ${JSON.stringify(body)}`);
+    print(body, pretty);
+    if (body.ok === false) process.exit(1);
+    return;
+  }
+
+  if (cmd === "sessions") {
+    const sub = parsed._[1];
+    if (!sub) {
+      const include = parsed.args.all ? "all" : parsed.args.closed ? "closed" : "open";
+      const { body } = await fetchJson(`${server}/sessions?include=${include}`);
+      print(body, pretty);
+      return;
+    }
+    if (sub === "close") {
+      const { body } = await fetchJson(`${server}/sessions?include=open`);
+      const ids = body.tabs.map((t) => t.tabId);
+      if (ids.length === 0) { print({ closed: 0 }, pretty); return; }
+      // Fan out closeTab commands and wait for all.
+      const results = [];
+      for (const tabId of ids) {
+        const enq = await enqueue(server, "closeTab", { tabId });
+        const r = await waitForResult(server, enq.id, parsed.flags.timeout ?? 15, parsed.flags.poll ?? 250);
+        results.push(r);
+      }
+      print({ closed: results.length, results }, pretty);
+      return;
+    }
+    if (sub === "clear") {
+      const { body } = await fetchJson(`${server}/sessions`, { method: "DELETE" });
+      print(body, pretty);
+      return;
+    }
+    throw new Error(`unknown sessions subcommand: ${sub}`);
+  }
+
+  // Extension command
+  const enqueued = await enqueue(server, cmd, parsed.args);
+  if (parsed.flags.noWait) {
+    print(enqueued, pretty);
+    return;
+  }
+  const timeout = parsed.flags.timeout ?? 15;
+  const pollMs = parsed.flags.poll ?? 250;
+  const result = await waitForResult(server, enqueued.id, timeout, pollMs);
+  print(result, pretty);
+  if (result.ok === false) process.exit(1);
+}
+
+main().catch((err) => {
+  console.error(`error: ${err.message}`);
+  process.exit(1);
+});

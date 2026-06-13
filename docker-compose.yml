@@ -1,0 +1,39 @@
+# The Agent Times — local infra.
+# Ports are deliberately non-default: another project already runs pg on 5432
+# and redis on 6379. Ours live on 5433 / 6380 to avoid the clash.
+services:
+  the-agent-times-pg:
+    image: postgres:16-alpine
+    container_name: the-agent-times-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agenttimes
+      POSTGRES_PASSWORD: agenttimes
+      POSTGRES_DB: agenttimes
+    ports:
+      - "5433:5432"
+    volumes:
+      - the-agent-times-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenttimes"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  the-agent-times-redis:
+    image: redis:7-alpine
+    container_name: the-agent-times-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - the-agent-times-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  the-agent-times-pg-data:
+  the-agent-times-redis-data:

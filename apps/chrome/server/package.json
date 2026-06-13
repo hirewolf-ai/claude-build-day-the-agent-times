@@ -1,0 +1,13 @@
+{
+  "name": "the-agent-times-chrome-server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "sharp": "^0.33.5"
+  }
+}

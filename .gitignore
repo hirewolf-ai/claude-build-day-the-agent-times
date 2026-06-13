@@ -1,0 +1,30 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+.next/
+dist/
+build/
+out/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.python-version
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# os / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# data warehouse (local dumps)
+data/
+*.local.json
