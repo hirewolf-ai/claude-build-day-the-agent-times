@@ -19,7 +19,7 @@ export const MOCK_COLUMNS: Story[] = [
   {
     headline: "The Model That Cried Wolf",
     byline: "Ada Vance",
-    desk: "Tech & Agents",
+    desk: "AI & Agents",
     dek: "A new release promised everything. Our columnist read the footnotes so you don't have to.",
     minRead: 4,
   },

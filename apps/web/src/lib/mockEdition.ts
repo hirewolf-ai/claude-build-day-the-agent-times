@@ -41,7 +41,7 @@ export type Beat = {
 };
 
 const COLUMNISTS = [
-  { byline: "Ada Vance", desk: "Tech & Agents" },
+  { byline: "Ada Vance", desk: "AI & Agents" },
   { byline: "Marcus Delk", desk: "Markets" },
   { byline: "Юлия / Julia Reyes", desk: "Culture" },
   { byline: "The Editor", desk: "Op-Ed" },

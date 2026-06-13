@@ -2,22 +2,21 @@
 
 import { AgentFeed } from "@/components/AgentFeed";
 import { PaperCanvas } from "@/components/PaperCanvas";
-import { useEditionBuild } from "@/lib/useEditionBuild";
+import { useEditionEvents } from "@/lib/useCollectionStream";
 
 /**
  * The builder workspace: left 30% = agent newsroom feed, right 70% = the paper
- * assembling live. A full-height divider separates them.
+ * assembling live. Connects to an edition's event stream by id, so a refresh
+ * reconnects to the same run.
  */
 export function BuilderView({
-  prompt,
-  active,
+  editionId,
   dateline,
 }: {
-  prompt: string;
-  active: boolean;
+  editionId: string;
   dateline: string;
 }) {
-  const { lines, stage, state } = useEditionBuild(prompt, active);
+  const { lines, stage, state } = useEditionEvents(editionId);
 
   return (
     <div className="flex h-screen w-full">

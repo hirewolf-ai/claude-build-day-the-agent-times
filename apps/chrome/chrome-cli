@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Convenience wrapper so agents can run `chrome-cli ...` (or `./chrome-cli ...`)
+# from apps/chrome without the cli/ path. Forwards everything to the real CLI.
+exec "$(dirname "$0")/cli/chrome-cli" "$@"

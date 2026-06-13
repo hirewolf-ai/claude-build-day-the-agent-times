@@ -31,3 +31,6 @@ data/
 
 # scratch / generated (screenshots, etc.)
 tmp/
+
+# per-run agent workspaces (collected news folders)
+.runs/

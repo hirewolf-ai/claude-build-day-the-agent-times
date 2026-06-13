@@ -29,10 +29,6 @@ USAGE
                                         (default: tmp/screenshots/annotated-<timestamp>.png)
     --sparse-labels                     hide badge when element has descriptive text
                                         (browser-use behavior; default is to label everything)
-  chrome-cli script --tabId <id>        run a Playwright script in that tab
-    --file <path>                       script body (file)
-    --code "<js>"                       script body (inline)
-    --timeout <ms>                      script execution timeout (default 60000)
 
 OPTIONS
   --timeout <seconds>   max time to wait for a result   (default: 15)
@@ -265,26 +261,8 @@ async function main() {
     return;
   }
 
-  if (cmd === "script") {
-    const tabId = parsed.args.tabId;
-    if (tabId == null) throw new Error("script requires --tabId");
-    let code = parsed.args.code;
-    if (parsed.args.file) {
-      const fs = require("fs");
-      code = fs.readFileSync(parsed.args.file, "utf8");
-    }
-    if (!code) throw new Error("script requires --file <path> or --code \"<js>\"");
-    const timeout = parsed.args.timeout ?? parsed.flags.timeout ?? 60_000;
-    const { status, body } = await fetchJson(`${server}/scripts`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tabId: Number(tabId), code, timeout: Number(timeout) }),
-    });
-    if (status !== 200) throw new Error(`script failed (${status}): ${JSON.stringify(body)}`);
-    print(body, pretty);
-    if (body.ok === false) process.exit(1);
-    return;
-  }
+  // NOTE: the old `script` subcommand was removed — it POSTed to a /scripts route
+  // that never existed (404). To run JS in a page, use `evaluate` instead.
 
   if (cmd === "sessions") {
     const sub = parsed._[1];
@@ -302,7 +280,7 @@ async function main() {
       const results = [];
       for (const tabId of ids) {
         const enq = await enqueue(server, "closeTab", { tabId });
-        const r = await waitForResult(server, enq.id, parsed.flags.timeout ?? 15, parsed.flags.poll ?? 250);
+        const r = await waitForResult(server, enq.id, parsed.flags.timeout ?? 120, parsed.flags.poll ?? 250);
         results.push(r);
       }
       print({ closed: results.length, results }, pretty);
@@ -322,7 +300,9 @@ async function main() {
     print(enqueued, pretty);
     return;
   }
-  const timeout = parsed.flags.timeout ?? 15;
+  // Default 120s (was 15s): real news sites + slow internet often take >15s to
+  // load/scrape, and a timeout here starved subagents before they could write.
+  const timeout = parsed.flags.timeout ?? 120;
   const pollMs = parsed.flags.poll ?? 250;
   const result = await waitForResult(server, enqueued.id, timeout, pollMs);
   print(result, pretty);

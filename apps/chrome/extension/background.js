@@ -757,14 +757,34 @@ async function pollOnce() {
 
 const POLL_ALARM = "wolf.poll";
 
+// MV3 service workers get evicted after ~30s idle, which silently stops the
+// poll setInterval — commands then pile up in the queue until the 30s alarm
+// revives us. To keep the worker ALIVE during an active session, we ping a
+// cheap chrome API every ~20s, which resets the idle timer. This is the
+// standard MV3 keep-alive and removes the stop-start sawtooth.
+let keepAliveTimer = null;
+function startKeepAlive() {
+  if (keepAliveTimer != null) return;
+  keepAliveTimer = setInterval(() => {
+    // Any extension-API call resets the SW idle timer.
+    chrome.runtime.getPlatformInfo(() => void chrome.runtime.lastError);
+  }, 20000);
+}
+function stopKeepAlive() {
+  if (keepAliveTimer != null) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+}
+
 function startPolling() {
   console.log("[wolf] polling started");
   if (pollTimer == null) {
     pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
   }
-  // Alarm keeps the SW from staying idle — minimum period is 30s in MV3
-  // release builds. The interval handles the fast path; the alarm is the
-  // safety net that revives us if Chrome evicts the worker.
+  startKeepAlive();
+  // Alarm is the safety net if the worker is evicted despite the keep-alive
+  // (e.g. the keep-alive interval itself was killed). Min period is 30s in MV3.
   chrome.alarms.create(POLL_ALARM, { periodInMinutes: 0.5 });
   pollOnce(); // kick immediately
 }
@@ -774,15 +794,17 @@ function stopPolling() {
     clearInterval(pollTimer);
     pollTimer = null;
   }
+  stopKeepAlive();
   chrome.alarms.clear(POLL_ALARM);
   console.log("[wolf] polling stopped");
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== POLL_ALARM) return;
-  // SW may have been evicted and just woke up — make sure the interval is
-  // running, then poll right now so we don't wait another 2s.
+  // SW may have been evicted and just woke up — make sure the interval and the
+  // keep-alive are running, then poll right now so we don't wait another 2s.
   if (pollTimer == null) pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
+  startKeepAlive();
   pollOnce();
 });
 

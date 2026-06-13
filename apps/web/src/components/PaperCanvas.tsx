@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Masthead } from "@/components/Masthead";
 import { MOCK_COLUMNS, MOCK_LEAD, type Story } from "@/lib/mockPaper";
 import type { PaperStage } from "@/lib/mockEdition";
@@ -9,16 +10,22 @@ const reached = (stage: PaperStage, target: PaperStage) =>
   order.indexOf(stage) >= order.indexOf(target);
 
 export function PaperCanvas({ stage, dateline }: { stage: PaperStage; dateline: string }) {
-  const showMast = reached(stage, "masthead");
   const showLead = reached(stage, "lead");
   const showCols = reached(stage, "columns");
   const settled = stage === "done";
 
+  // Masthead fades in on mount — the paper looks alive from the first frame.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   return (
     <div className="h-full overflow-y-auto bg-[#f7f4ee] px-8 py-10 text-[#1a1a1a]">
       <div className="mx-auto max-w-3xl">
-        {/* Masthead */}
-        <div className={fade(showMast)}>
+        {/* Masthead — always present, cinematic fade-in on mount */}
+        <div className={`scene ${mounted ? "opacity-100" : "opacity-0 translate-y-3"} transition-all duration-1000`}>
           <div className="border-b-[3px] border-double border-[#1a1a1a] pb-4">
             <Masthead size="text-4xl sm:text-5xl" className="text-[#1a1a1a]" />
             <p className="mt-2 text-center font-serif text-xs uppercase tracking-[0.2em] text-[#5a554c]">
@@ -28,34 +35,18 @@ export function PaperCanvas({ stage, dateline }: { stage: PaperStage; dateline: 
         </div>
 
         {/* Lead story */}
-        <div className={`mt-8 ${fade(showLead)}`}>
-          {showLead ? (
-            <LeadBlock story={MOCK_LEAD} />
-          ) : (
-            <SkeletonLead />
-          )}
+        {/* The real edition (printing agents) isn't built yet — show ONLY the
+            skeleton paper assembling, never mock headlines. Wire real stories in
+            once the printing/columnist phase lands. */}
+        <div className="relative mt-8">
+          <SkeletonLead />
         </div>
 
-        {/* Columns */}
         <div className="mt-10 grid grid-cols-1 gap-x-8 gap-y-8 border-t border-[#d8d2c6] pt-8 sm:grid-cols-2">
-          {MOCK_COLUMNS.map((c, i) => (
-            <div key={c.headline} className={fade(showCols)}>
-              {settled ? (
-                <ColumnBlock story={c} />
-              ) : showCols ? (
-                <ColumnShimmer story={c} delay={i * 120} />
-              ) : (
-                <SkeletonColumn />
-              )}
-            </div>
+          {[0, 1, 2, 3].map((i) => (
+            <SkeletonColumn key={i} />
           ))}
         </div>
-
-        {!settled && showCols && (
-          <p className="mt-8 animate-pulse text-center font-serif text-sm italic text-[#7a7468]">
-            the columnists are still filing…
-          </p>
-        )}
       </div>
     </div>
   );
