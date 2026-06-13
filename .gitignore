@@ -28,3 +28,6 @@ __pycache__/
 # data warehouse (local dumps)
 data/
 *.local.json
+
+# scratch / generated (screenshots, etc.)
+tmp/
