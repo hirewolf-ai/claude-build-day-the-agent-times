@@ -11,18 +11,24 @@ export type RunState = "idle" | "running" | "done";
  * reasoning. Replays buffered events then tails live ones, so a page refresh
  * reconnects to the same run. Nothing technical is shown.
  */
-export function useEditionEvents(editionId: string) {
+export function useEditionEvents(editionId: string, enabled = true) {
   const [lines, setLines] = useState<FeedLine[]>([]);
   const [stage, setStage] = useState<PaperStage>("blank");
   const [state, setState] = useState<RunState>("idle");
+  const [sections, setSections] = useState<{ name: string; html: string }[]>([]);
+  const [phase, setPhase] = useState<"collecting" | "printing">("collecting");
+  const [cost, setCost] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!editionId) return;
+    if (!editionId || !enabled) return;
     // Reconnect cleanly every time the edition changes (and survive Strict Mode's
     // dev double-mount — the abort below just cancels the throwaway first mount).
     setLines([]);
     setStage("blank");
     setState("running");
+    setSections([]);
+    setPhase("collecting");
+    setCost(null);
 
     const controller = new AbortController();
     const push = (line: FeedLine) => setLines((prev) => [...prev, line]);
@@ -86,23 +92,44 @@ export function useEditionEvents(editionId: string) {
                 setStage("columns");
                 push({ agent: "columnist", text: `${cap(String(ev.beat))} is filed.`, done: true });
                 break;
-              case "done":
-                setStage("done");
+              case "phase":
+                // Auto-handoff: research → printing.
+                if (ev.phase === "printing") {
+                  setPhase("printing");
+                  setStage("columns");
+                  push({ agent: "design", text: "Stories are in — the Design Desk takes over.", done: true });
+                }
+                break;
+              case "section":
+                // A printed story landed — render it live in the paper.
+                setSections((prev) =>
+                  prev.some((s) => s.name === ev.name)
+                    ? prev
+                    : [...prev, { name: String(ev.name), html: String(ev.html) }],
+                );
                 push({
-                  agent: "design",
-                  text: "Today's edition is in. Enjoy your coffee. ☕",
+                  agent: "columnist",
+                  text: /lead/i.test(String(ev.name)) ? "The lead story is set." : "Another story is filed.",
                   done: true,
                 });
+                break;
+              case "done":
+                // Collection done — printing follows. Don't declare the edition
+                // finished here; the "end" event marks the true end.
+                push({ agent: "design", text: "The newsroom filed its copy.", done: true });
                 break;
               case "error":
                 push({
                   agent: "design",
-                  text: "We hit a snag gathering the news — hang tight.",
+                  text: "We hit a snag — hang tight.",
                   done: true,
                 });
                 break;
+              case "cost":
+                if (ev.total) setCost(Number(ev.usd));
+                break;
               case "end":
-                setStage((s) => (s === "done" ? s : "done"));
+                setStage("done");
                 setState("done");
                 break;
             }
@@ -119,9 +146,9 @@ export function useEditionEvents(editionId: string) {
     })();
 
     return () => controller.abort();
-  }, [editionId]);
+  }, [editionId, enabled]);
 
-  return { lines, stage, state };
+  return { lines, stage, state, sections, phase, cost };
 }
 
 function cap(s: string): string {

@@ -1,5 +1,9 @@
 import "server-only";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { editions } from "@/db/schema";
 import { runCollection, type CollectionEvent } from "./runCollection";
+import { runPrinting, type PrintEvent } from "./runPrinting";
 
 /**
  * In-memory registry of running/finished edition collections, keyed by editionId.
@@ -13,7 +17,12 @@ import { runCollection, type CollectionEvent } from "./runCollection";
 
 type Listener = (ev: StoredEvent) => void;
 
-export type StoredEvent = CollectionEvent | { type: "end" };
+export type StoredEvent =
+  | CollectionEvent
+  | PrintEvent
+  | { type: "phase"; phase: "collecting" | "printing" }
+  | { type: "cost"; usd: number; total?: boolean }
+  | { type: "end" };
 
 type Run = {
   editionId: string;
@@ -38,13 +47,39 @@ export function startEditionRun(
   runs.set(editionId, run);
 
   (async () => {
+    let totalCost = 0;
     try {
+      // Phase 1 — gather the news.
+      emit(run, { type: "phase", phase: "collecting" });
+      let collected = 0;
       for await (const ev of runCollection(editionId, prompt, reader)) {
+        if (ev.type === "done") collected = ev.fileCount;
+        if (ev.type === "cost") totalCost += ev.usd;
         emit(run, ev);
+      }
+
+      // Phase 2 — print the paper (auto handoff). Skip only if collection
+      // produced nothing to print.
+      if (collected > 0) {
+        emit(run, { type: "phase", phase: "printing" });
+        for await (const ev of runPrinting(editionId)) {
+          if (ev.type === "cost") totalCost += ev.usd;
+          emit(run, ev);
+        }
       }
     } catch (err) {
       emit(run, { type: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
+      // Persist + announce the total cost of both agents.
+      if (totalCost > 0) {
+        const usd = Number(totalCost.toFixed(2));
+        emit(run, { type: "cost", usd, total: true } as StoredEvent);
+        await db
+          .update(editions)
+          .set({ costUsd: String(usd) })
+          .where(eq(editions.id, editionId))
+          .catch(() => {});
+      }
       run.done = true;
       emit(run, { type: "end" });
     }

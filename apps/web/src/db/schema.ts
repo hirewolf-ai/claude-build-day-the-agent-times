@@ -31,6 +31,7 @@ export const editions = pgTable("editions", {
   prompt: text("prompt").notNull().default(""), // "" = general edition
   status: text("status").notNull().default("collecting"), // collecting | printing | ready | failed
   workspaceDir: text("workspace_dir"), // /tmp/read-<datetime>/ — the news folder
+  costUsd: text("cost_usd"), // total agent cost (collection + printing), USD string
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -46,6 +46,206 @@ body {
   }
 }
 
+/* ── The printed paper: NYT-style styles for the agent-written edition HTML ──
+   The Design Desk writes <article class="lead|col"> fragments using these
+   classes. Scoped under .paper. Selectors are specific enough to beat Tailwind
+   Preflight's element resets (which is why earlier styles "didn't apply"). */
+
+.paper .edition {
+  --ink: #121212;
+  --ink-soft: #333028;
+  --rule: #cfc9bb;
+  --accent: #b5471f;
+  color: var(--ink);
+}
+
+/* Each agent-written article fades + rises in as it streams (cinematic build). */
+@keyframes printin {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.paper article {
+  animation: printin 0.6s ease both;
+}
+
+/* Headlines — high-contrast serif, NYT Cheltenham-ish */
+.paper article .headline {
+  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.011em;
+  margin: 0;
+}
+.paper article.lead .headline {
+  font-size: clamp(2rem, 3.2vw, 2.9rem);
+  line-height: 1.05;
+}
+.paper article.col .headline {
+  font-size: 1.35rem;
+  line-height: 1.18;
+}
+.paper article a.headline-link,
+.paper article .headline a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Kicker — small caps section label */
+.paper article .kicker {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.4rem;
+}
+
+/* Dek / standfirst */
+.paper article .dek {
+  font-family: var(--font-serif), Georgia, serif;
+  color: var(--ink-soft);
+  margin: 0.55rem 0 0;
+}
+.paper article.lead .dek {
+  font-size: 1.18rem;
+  line-height: 1.45;
+}
+.paper article.col .dek {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+/* Cover image */
+.paper article .cover {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0.85rem 0 0;
+  background: #e7e2d6;
+  object-fit: cover;
+}
+.paper article.lead .cover {
+  aspect-ratio: 16 / 9;
+  margin-top: 1rem;
+}
+.paper article.col .cover {
+  aspect-ratio: 3 / 2;
+}
+
+/* Body copy */
+.paper article .body {
+  font-family: var(--font-serif), Georgia, serif;
+  color: #2a2823;
+  margin-top: 0.75rem;
+}
+.paper article.lead .body {
+  font-size: 1.02rem;
+  line-height: 1.62;
+  /* lead body reads as two columns on wide screens, NYT-style */
+  columns: 2;
+  column-gap: 2rem;
+}
+.paper article.col .body {
+  font-size: 0.96rem;
+  line-height: 1.55;
+}
+.paper article .body p {
+  margin: 0 0 0.7rem;
+}
+.paper article .body p:first-child {
+  margin-top: 0;
+}
+
+/* Byline + sources */
+.paper article .byline {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  margin-top: 0.85rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a8478;
+}
+.paper article .sources {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  margin-top: 0.45rem;
+  font-size: 0.76rem;
+  color: #6b665c;
+}
+.paper article .sources a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(181, 71, 31, 0.35);
+}
+.paper article .sources a:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* Opinion columns — accent rule on the left */
+.paper article.opinion {
+  border-left: 3px solid var(--accent);
+  padding-left: 1rem;
+}
+.paper article.opinion .kicker {
+  color: var(--accent);
+}
+
+/* "From Your Feed" — the reader's own X posts, clickable */
+.paper article.feed {
+  background: #efe9dc;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--rule);
+}
+.paper article.feed .feed-list {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+}
+.paper article.feed .feed-list li {
+  padding: 0.55rem 0;
+  border-top: 1px solid #ddd5c4;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 0.96rem;
+  line-height: 1.4;
+}
+.paper article.feed .feed-list li:first-child {
+  border-top: none;
+}
+.paper article.feed .feed-list a {
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.paper article.feed .feed-list a:hover {
+  color: var(--accent);
+}
+.paper article.feed .feed-list a::before {
+  content: "𝕏  ";
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Column grid — divider rules between stories like a real front page */
+.paper .columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.6rem 2rem;
+}
+@media (min-width: 640px) {
+  .paper .columns {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.paper article.col {
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--rule);
+}
+
 /* Entry ↔ builder crossfade (Claude-style transition). */
 .scene {
   transition: opacity 600ms ease, transform 600ms ease, filter 600ms ease;

@@ -5,12 +5,13 @@ import { eq } from "drizzle-orm";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { db } from "@/db";
 import { editions } from "@/db/schema";
-import { PRINTING_PROMPT } from "./printingPrompt";
+import { PRINTING_PROMPT, COLUMNIST_PROMPT } from "./printingPrompt";
 
 export type PrintEvent =
   | { type: "status"; text: string }
   | { type: "note"; text: string }
   | { type: "section"; html: string; name: string } // a story, streamed live
+  | { type: "cost"; usd: number } // printing agent cost (USD)
   | { type: "done"; ok: boolean }
   | { type: "error"; message: string };
 
@@ -64,9 +65,18 @@ export async function* runPrinting(editionId: string): AsyncGenerator<PrintEvent
         model: "claude-opus-4-8",
         systemPrompt: PRINTING_PROMPT,
         cwd: dir,
-        allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"],
+        // Agent enabled so the Design Desk can delegate opinion pieces to columnists.
+        allowedTools: ["Read", "Write", "Edit", "Glob", "Grep", "Agent"],
         disallowedTools: ["WebFetch", "WebSearch", "Bash"], // no browser/shell in printing
         permissionMode: "bypassPermissions",
+        agents: {
+          columnist: {
+            description:
+              "Writes ONE opinion column in a distinct voice about a fact it's given, to its assigned section file (an <article class='col opinion'>).",
+            prompt: COLUMNIST_PROMPT,
+            tools: ["Read", "Write"],
+          },
+        },
         env: { ...process.env, API_TIMEOUT_MS: "1800000" },
       },
     });
@@ -77,6 +87,9 @@ export async function* runPrinting(editionId: string): AsyncGenerator<PrintEvent
       if (message.type === "assistant") {
         const text = textOf(message);
         if (text) yield { type: "note", text: trim(text) };
+      } else if (message.type === "result") {
+        const usd = (message as { total_cost_usd?: number }).total_cost_usd;
+        if (typeof usd === "number") yield { type: "cost", usd };
       }
     }
 

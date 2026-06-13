@@ -22,6 +22,7 @@ export type CollectionEvent =
   | { type: "note"; text: string } // friendly reasoning, one short sentence
   | { type: "personalize"; handle?: string } // reading the reader's X
   | { type: "filed"; beat: string } // a beat file was written
+  | { type: "cost"; usd: number } // agent cost for this phase (USD)
   | { type: "done"; fileCount: number }
   | { type: "error"; message: string };
 
@@ -105,10 +106,16 @@ export async function* runCollection(
       xUrl
         ? `  1. Open https://x.com/home (the reader's logged-in feed) via ./cli/chrome-cli,`
         : "  1. Open https://x.com/explore/tabs/trending via ./cli/chrome-cli,",
-      `     read ~5 recent posts/headlines.${xUrl ? ` (Reader is ${xHandle ? "@" + xHandle : "our reader"}.)` : ""}`,
+      `     read ~5 recent posts.${xUrl ? ` (Reader is ${xHandle ? "@" + xHandle : "our reader"}.)` : ""}`,
+      "     For EACH post capture its FULL text AND its permalink URL (the",
+      "     https://x.com/<handle>/status/<id> link) — these become a 'From Your Feed' section.",
       "  2. Open https://techcrunch.com/category/artificial-intelligence/ , read ~5 latest AI headlines.",
+      "     For the top 2-3 items, OPEN the article (openTab its URL) and grab its cover image via",
+      "     evaluate document.querySelector('meta[property=\"og:image\"]')?.content — the strongest",
+      "     story (the likely lead) MUST have an Image. Also grab a 1-2 sentence summary.",
       `  3. WRITE your findings with the Write tool to: ${dir}/collected/surprise.md`,
-      "     (markdown — one section per item: ## headline, Source · URL, 1-line summary).",
+      "     (markdown — one section per item: ## headline, then '- Source · URL · Image: <url>',",
+      "      then a 1-line summary. For X posts include the exact status URL and the post text.)",
       "  4. Close your tabs (./cli/chrome-cli sessions close). Done — no other beats, no CLAUDE.md needed.",
       "Use ./cli/chrome-cli (not bare chrome-cli). The file MUST exist on disk before you finish.",
     ].join("\n");
@@ -134,6 +141,9 @@ export async function* runCollection(
       await logMessage(log, message);
       if (message.type === "assistant") {
         for (const ev of friendlyEventsFromBlocks(message, seen, seen)) yield ev;
+      } else if (message.type === "result") {
+        const usd = (message as { total_cost_usd?: number }).total_cost_usd;
+        if (typeof usd === "number") yield { type: "cost", usd };
       }
     }
     const fileCount = await beatFileCount(dir);
@@ -285,7 +295,9 @@ export async function* runCollection(
         } else if (message.type === "result") {
           subtype = (message as { subtype?: string }).subtype;
           sessionId = (message as { session_id?: string }).session_id ?? sessionId;
-          await log(`=== result: ${subtype} ===`);
+          const usd = (message as { total_cost_usd?: number }).total_cost_usd;
+          if (typeof usd === "number") yield { type: "cost", usd };
+          await log(`=== result: ${subtype} ($${usd ?? "?"}) ===`);
         }
       }
 

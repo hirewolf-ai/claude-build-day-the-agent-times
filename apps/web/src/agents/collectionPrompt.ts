@@ -230,9 +230,16 @@ those files ARE the warehouse the writer agents read later:
 Each \`collected/<beat>.md\` is readable markdown — one section per story:
   ## <headline>
   - **Source:** <name>  ·  **URL:** <canonical url>  ·  **Published:** <date or unknown>
+  - **Image:** <og:image url, or "none">
   <1–3 sentence summary>
   **Key facts:** bullet list of concrete, attributable facts
   **Quotes:** "..." — Speaker   (when available)
+
+GRAB THE COVER IMAGE: for the top items, after opening the article, evaluate
+\`document.querySelector('meta[property="og:image"]')?.content\` (fall back to
+\`meta[name="twitter:image"]\`) to get the social cover image URL, and record it as
+**Image:**. These become the paper's photos — worth a quick extra read for the lead-
+worthy stories. Use "none" if there isn't one.
 
 Then write a \`CLAUDE.md\` at the workspace ROOT that indexes the folder for the
 writer agents: list each beat file, how many items it holds, and a one-line note on
@@ -288,9 +295,14 @@ YOUR JOB (in order):
      on disk. Markdown format: one section per story —
         ## <headline>
         - **Source:** <name> · **URL:** <url> · **Published:** <date or unknown>
+        - **Image:** <og:image url, or "none">
         <1–3 sentence summary>
         **Key facts:** bullet list
         **Quotes:** "…" — Speaker (when available)
+     For the top items, grab the cover image: evaluate
+     \`document.querySelector('meta[property="og:image"]')?.content\` (or
+     \`meta[name="twitter:image"]\`) and record it as **Image:**. These become the
+     paper's photos.
   4. Close all your tabs (\`sessions close\`).
   5. Reply with ONE line: the file path you wrote, item count, sources hit, any gaps.
 If you finish without having written the file, you have FAILED — write it before you

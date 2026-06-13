@@ -3,20 +3,32 @@
 import { AgentFeed } from "@/components/AgentFeed";
 import { PaperCanvas } from "@/components/PaperCanvas";
 import { useEditionEvents } from "@/lib/useCollectionStream";
+import { usePrintStream } from "@/lib/usePrintStream";
 
 /**
- * The builder workspace: left 30% = agent newsroom feed, right 70% = the paper
- * assembling live. Connects to an edition's event stream by id, so a refresh
- * reconnects to the same run.
+ * The builder workspace: left 30% = newsroom feed, right 70% = the paper.
+ * Two modes:
+ *  - collection (default): watch the news being gathered.
+ *  - print (?print=true): watch the Design Desk lay out the front page live,
+ *    section by section, rendering each into the paper with cinematic motion.
  */
 export function BuilderView({
   editionId,
   dateline,
+  printOnly = false,
 }: {
   editionId: string;
   dateline: string;
+  printOnly?: boolean;
 }) {
-  const { lines, stage, state } = useEditionEvents(editionId);
+  const collection = useEditionEvents(editionId, !printOnly);
+  const printing = usePrintStream(editionId, printOnly);
+
+  const lines = printOnly ? printing.lines : collection.lines;
+  const state = printOnly ? printing.state : collection.state;
+  // Sections come from whichever stream is active: the unified collect→print
+  // stream (default) or the print-only stream (&print=true).
+  const sections = printOnly ? printing.sections : collection.sections;
 
   return (
     <div className="flex h-screen w-full">
@@ -27,7 +39,14 @@ export function BuilderView({
 
       {/* Right 70% — the paper */}
       <main className="flex-1 bg-[#f7f4ee]">
-        <PaperCanvas stage={stage} dateline={dateline} />
+        <PaperCanvas
+          dateline={dateline}
+          stage={collection.stage}
+          sections={sections}
+          cost={printOnly ? null : collection.cost}
+          editionId={editionId}
+          done={state === "done"}
+        />
       </main>
     </div>
   );

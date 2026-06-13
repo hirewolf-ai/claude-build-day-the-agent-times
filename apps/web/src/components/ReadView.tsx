@@ -33,6 +33,7 @@ export function ReadView({
   const router = useRouter();
   const params = useSearchParams();
   const editionId = params.get("e"); // /read?e=<editionId> — reconnectable
+  const printOnly = params.get("print") === "true"; // skip collection, just print
   const inBuilder = editionId !== null;
 
   const [prompt, setPrompt] = useState("");
@@ -82,7 +83,7 @@ export function ReadView({
   if (inBuilder) {
     return (
       <div className="scene builder-enter">
-        <BuilderView editionId={editionId!} dateline={serverDateline} />
+        <BuilderView editionId={editionId!} dateline={serverDateline} printOnly={printOnly} />
       </div>
     );
   }
