@@ -9,7 +9,19 @@ const DEBUGGER_PROTOCOL_VERSION = "1.3";
 // User-visible tab-group label (internal const name kept as-is per scope).
 const WOLF_GROUP_TITLE = "The Agent Times";
 const WOLF_GROUP_COLOR = "yellow";
-const SERVER_URL = "http://localhost:3011";
+// Broker URL. Defaults to local dev; override for a deployed broker by setting
+// `serverUrl` in chrome.storage.local (e.g. the k8s LoadBalancer URL):
+//   chrome.storage.local.set({ serverUrl: "http://<lb-host>:3011" })
+// Loaded async on startup; falls back to localhost until then.
+let SERVER_URL = "http://localhost:3011";
+chrome.storage?.local?.get?.("serverUrl", (r) => {
+  if (r && typeof r.serverUrl === "string" && r.serverUrl) SERVER_URL = r.serverUrl;
+});
+chrome.storage?.onChanged?.addListener?.((changes, area) => {
+  if (area === "local" && changes.serverUrl?.newValue) {
+    SERVER_URL = changes.serverUrl.newValue;
+  }
+});
 const POLL_INTERVAL_MS = 2000;
 
 // tabId -> true for tabs we've attached CDP to

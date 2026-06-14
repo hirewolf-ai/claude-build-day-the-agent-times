@@ -1,0 +1,144 @@
+# The Agent Times — imageless k8s deploy.
+#
+# No custom images / no ECR: a stock node base clones the PUBLIC repo at startup,
+# installs deps + builds, then runs the broker (:3011) and web (:3010). Postgres
+# runs as a sidecar (ephemeral). One classic LoadBalancer exposes both ports.
+#
+# Apply:   kubectl apply -f deploy/k8s.yaml
+# Secret:  created separately from your local .env.local (never committed).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-times-config
+  namespace: claude-build-day
+data:
+  REPO_URL: "https://github.com/hirewolf-ai/claude-build-day-the-agent-times.git"
+  REPO_REF: "main"
+  DATABASE_URL: "postgresql://agenttimes:agenttimes@localhost:5432/agenttimes"
+  AGENT_TIMES_SERVER: "http://localhost:3011"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-times
+  namespace: claude-build-day
+  labels: { app: agent-times }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # single pod owns the ephemeral DB
+  selector:
+    matchLabels: { app: agent-times }
+  template:
+    metadata:
+      labels: { app: agent-times }
+    spec:
+      volumes:
+        - name: src
+          emptyDir: {}
+        - name: pgdata
+          emptyDir: {}
+
+      # ---- provision: clone + install + build (runs once, before app) -------
+      initContainers:
+        - name: provision
+          image: node:22-bookworm
+          workingDir: /src
+          volumeMounts:
+            - { name: src, mountPath: /src }
+          envFrom:
+            - configMapRef: { name: agent-times-config }
+          command: ["bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              echo "→ cloning $REPO_URL ($REPO_REF)"
+              git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" repo
+              cd repo
+              corepack enable
+              echo "→ pnpm install"
+              pnpm install --frozen-lockfile || pnpm install
+              echo "→ next build (web)"
+              pnpm --filter web build
+              echo "✓ provision complete"
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits:   { cpu: "2",    memory: "3Gi" }
+
+      containers:
+        # ---- postgres sidecar (ephemeral) ----------------------------------
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER,     value: agenttimes }
+            - { name: POSTGRES_PASSWORD, value: agenttimes }
+            - { name: POSTGRES_DB,       value: agenttimes }
+            - { name: PGDATA,            value: /var/lib/postgresql/data/pgdata }
+          ports:
+            - { containerPort: 5432 }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "agenttimes"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+
+        # ---- app: broker (:3011) + web (:3010) -----------------------------
+        - name: app
+          image: node:22-bookworm
+          workingDir: /src/repo
+          envFrom:
+            - configMapRef: { name: agent-times-config }
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: { name: agent-times-secret, key: ANTHROPIC_API_KEY }
+            - { name: NODE_ENV, value: production }
+            - { name: PORT,     value: "3010" }   # web
+          ports:
+            - { containerPort: 3010, name: web }
+            - { containerPort: 3011, name: broker }
+          volumeMounts:
+            - { name: src, mountPath: /src }
+          command: ["bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              cd /src/repo
+              corepack enable
+              echo "→ waiting for postgres"
+              until pg_isready -h localhost -p 5432 -U agenttimes >/dev/null 2>&1; do sleep 2; done || true
+              echo "→ db push (drizzle)"
+              (cd apps/web && pnpm db:push) || echo "db:push failed (continuing)"
+              echo "→ starting broker :3011"
+              (cd apps/chrome/server && npm install --omit=dev >/dev/null 2>&1 || true; node server.js) &
+              echo "→ starting web :3010"
+              cd apps/web && exec pnpm start
+          readinessProbe:
+            httpGet: { path: "/", port: 3010 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits:   { cpu: "2",    memory: "3Gi" }
+---
+# Classic external LoadBalancer exposing web (3010) + broker (3011).
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-times-lb
+  namespace: claude-build-day
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+spec:
+  type: LoadBalancer
+  selector: { app: agent-times }
+  ports:
+    - { name: web,    port: 3010, targetPort: 3010, protocol: TCP }
+    - { name: broker, port: 3011, targetPort: 3011, protocol: TCP }

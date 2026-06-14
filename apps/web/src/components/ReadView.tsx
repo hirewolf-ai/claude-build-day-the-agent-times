@@ -33,7 +33,11 @@ export function ReadView({
   const router = useRouter();
   const params = useSearchParams();
   const editionId = params.get("e"); // /read?e=<editionId> — reconnectable
-  const printOnly = params.get("print") === "true"; // skip collection, just print
+  // Skip collection, just re-run the Design Desk against this edition's saved
+  // files. `reprint` is an alias for `print` — reads clearer ("reprint the old
+  // session").
+  const printOnly =
+    params.get("print") === "true" || params.get("reprint") === "true";
   const inBuilder = editionId !== null;
 
   const [prompt, setPrompt] = useState("");
