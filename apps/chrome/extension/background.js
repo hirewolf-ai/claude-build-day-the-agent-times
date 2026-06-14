@@ -9,11 +9,11 @@ const DEBUGGER_PROTOCOL_VERSION = "1.3";
 // User-visible tab-group label (internal const name kept as-is per scope).
 const WOLF_GROUP_TITLE = "The Agent Times";
 const WOLF_GROUP_COLOR = "yellow";
-// Broker URL. Defaults to local dev; override for a deployed broker by setting
-// `serverUrl` in chrome.storage.local (e.g. the k8s LoadBalancer URL):
-//   chrome.storage.local.set({ serverUrl: "http://<lb-host>:3011" })
-// Loaded async on startup; falls back to localhost until then.
-let SERVER_URL = "http://localhost:3011";
+// Broker URL. Defaults to the DEPLOYED broker so the extension works against the
+// live app with zero setup. For local dev, set `serverUrl` in storage:
+//   chrome.storage.local.set({ serverUrl: "http://localhost:3011" })
+let SERVER_URL =
+  "http://k8s-claudebu-agenttim-b864d56f00-3091bcd712a9c4c5.elb.us-west-1.amazonaws.com:3011";
 chrome.storage?.local?.get?.("serverUrl", (r) => {
   if (r && typeof r.serverUrl === "string" && r.serverUrl) SERVER_URL = r.serverUrl;
 });
