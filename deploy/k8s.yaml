@@ -58,7 +58,8 @@ spec:
           args:
             - |
               set -euo pipefail
-              echo "→ cloning $REPO_URL ($REPO_REF)"
+              echo "→ cloning $REPO_URL ($REPO_REF) (fresh)"
+              rm -rf repo
               git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" repo
               cd repo
               corepack enable
