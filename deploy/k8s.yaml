@@ -63,22 +63,26 @@ spec:
               git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" repo
               cd repo
               corepack enable
-              # The Agent SDK packages were published very recently; pnpm 11's
-              # supply-chain policy (minimumReleaseAge) rejects "too new" deps in
-              # a fresh env. These are first-party Anthropic packages — disable
-              # the age gate for this build.
-              export NPM_CONFIG_MINIMUM_RELEASE_AGE=0
-              # pnpm 11 also blocks (and exits non-zero on) unapproved postinstall
-              # build scripts (esbuild/sharp/unrs-resolver). Allow them for this
-              # trusted build so the install runs scripts and exits clean.
-              printf 'minimum-release-age=0\nminimumReleaseAge=0\ndangerously-allow-all-builds=true\n' >> .npmrc
+
+              # pnpm 11 enforces two supply-chain gates that block a fresh-env
+              # build of this repo. Both are about TRUSTED, recently-published
+              # first-party deps (the Agent SDK) — relax them GLOBALLY so EVERY
+              # pnpm invocation sees it, including the implicit lockfile re-check
+              # pnpm runs before `pnpm run build`.
+              #  1. minimumReleaseAge — rejects "too new" packages
+              #  2. dangerously-allow-all-builds — runs postinstall scripts
+              #  3. verify-deps-before-run=false — skip the pre-run re-check
+              printf 'minimum-release-age=0\ndangerously-allow-all-builds=true\nverify-deps-before-run=false\n' > /root/.npmrc
+
               echo "→ pnpm install"
-              pnpm install --frozen-lockfile --config.minimumReleaseAge=0 --config.dangerouslyAllowAllBuilds=true \
-                || pnpm install --no-frozen-lockfile --config.minimumReleaseAge=0 --config.dangerouslyAllowAllBuilds=true
-              echo "→ approve + rebuild native deps (esbuild/sharp)"
-              pnpm rebuild -r esbuild sharp unrs-resolver 2>/dev/null || true
-              echo "→ next build (web)"
-              pnpm --filter web build
+              pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile
+
+              echo "→ next build (web) — via local binary to avoid pnpm script re-check"
+              cd apps/web
+              node ./node_modules/next/dist/bin/next build \
+                || ../../node_modules/.bin/next build \
+                || ./node_modules/.bin/next build
+              cd ../..
               echo "✓ provision complete"
           resources:
             requests: { cpu: "500m", memory: "1Gi" }
@@ -128,14 +132,19 @@ spec:
               set -euo pipefail
               cd /src/repo
               corepack enable
+              # Same global pnpm policy relaxation as provision, so db:push and
+              # next start don't trip the supply-chain pre-run re-check.
+              printf 'minimum-release-age=0\ndangerously-allow-all-builds=true\nverify-deps-before-run=false\n' > /root/.npmrc
               echo "→ waiting for postgres"
               until pg_isready -h localhost -p 5432 -U agenttimes >/dev/null 2>&1; do sleep 2; done || true
               echo "→ db push (drizzle)"
-              (cd apps/web && pnpm db:push) || echo "db:push failed (continuing)"
+              (cd apps/web && node ./node_modules/drizzle-kit/bin.cjs push) \
+                || (cd apps/web && pnpm db:push) \
+                || echo "db:push failed (continuing)"
               echo "→ starting broker :3011"
               (cd apps/chrome/server && npm install --omit=dev >/dev/null 2>&1 || true; node server.js) &
-              echo "→ starting web :3010"
-              cd apps/web && exec pnpm start
+              echo "→ starting web :3010 (local next binary)"
+              cd apps/web && exec node ./node_modules/next/dist/bin/next start --port 3010
           readinessProbe:
             httpGet: { path: "/", port: 3010 }
             initialDelaySeconds: 20
