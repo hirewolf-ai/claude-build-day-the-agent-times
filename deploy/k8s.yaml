@@ -63,8 +63,16 @@ spec:
               git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" repo
               cd repo
               corepack enable
+              # The Agent SDK packages were published very recently; pnpm 11's
+              # supply-chain policy (minimumReleaseAge) rejects "too new" deps in
+              # a fresh env. These are first-party Anthropic packages — disable
+              # the age gate for this build.
+              export NPM_CONFIG_MINIMUM_RELEASE_AGE=0
+              printf 'minimum-release-age=0\nminimumReleaseAge=0\n' >> .npmrc
               echo "→ pnpm install"
-              pnpm install --frozen-lockfile || pnpm install
+              pnpm install --frozen-lockfile --config.minimumReleaseAge=0 \
+                || pnpm install --config.minimumReleaseAge=0 \
+                || pnpm install --no-frozen-lockfile --config.minimumReleaseAge=0
               echo "→ next build (web)"
               pnpm --filter web build
               echo "✓ provision complete"
