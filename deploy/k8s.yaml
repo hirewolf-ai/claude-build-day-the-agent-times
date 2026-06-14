@@ -33,6 +33,12 @@ spec:
     metadata:
       labels: { app: agent-times }
     spec:
+      # Pin to the existing 'agents' node group (arm64 r8g.large) and tolerate
+      # its taint — same scheduling as the wolf-im workload already running there.
+      nodeSelector:
+        workload: agents
+      tolerations:
+        - { key: workload, operator: Equal, value: agents, effect: NoSchedule }
       volumes:
         - name: src
           emptyDir: {}
