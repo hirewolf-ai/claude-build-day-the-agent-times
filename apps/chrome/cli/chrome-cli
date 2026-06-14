@@ -6,10 +6,13 @@
 // Usage:   chrome-cli <command> [--key value ...] [--timeout 10] [--json]
 // See:     chrome-cli --help
 
+// Default to the deployed broker so anyone can run the CLI against the live app
+// with no setup. Override with AGENT_TIMES_SERVER for local dev:
+//   AGENT_TIMES_SERVER=http://localhost:3011 chrome-cli ...
 const SERVER =
   process.env.AGENT_TIMES_SERVER ||
   process.env.WOLF_SERVER || // legacy fallback
-  "http://localhost:3011";
+  "http://k8s-claudebu-agenttim-b864d56f00-3091bcd712a9c4c5.elb.us-west-1.amazonaws.com:3011";
 
 const HELP = `
 chrome-cli — send commands to The Agent Times Chrome extension via the local server.

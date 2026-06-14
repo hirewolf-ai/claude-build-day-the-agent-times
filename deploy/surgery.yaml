@@ -1,0 +1,72 @@
+# Surgery pod — no init, no auto-build. The app container just sleeps so we can
+# `kubectl exec` in, provision by hand (clone/install/build), and run the servers
+# manually. Once it works, the exact commands get baked back into k8s.yaml.
+#
+# Reuses the same labels/namespace/Secret/LB as k8s.yaml, so the existing
+# agent-times-lb Service routes to this pod too.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-times
+  namespace: claude-build-day
+  labels: { app: agent-times }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: agent-times }
+  template:
+    metadata:
+      labels: { app: agent-times }
+    spec:
+      nodeSelector:
+        workload: agents
+      tolerations:
+        - { key: workload, operator: Equal, value: agents, effect: NoSchedule }
+      volumes:
+        - name: src
+          emptyDir: {}
+        - name: pgdata
+          emptyDir: {}
+      containers:
+        # ---- postgres sidecar (ephemeral) ----------------------------------
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER,     value: agenttimes }
+            - { name: POSTGRES_PASSWORD, value: agenttimes }
+            - { name: POSTGRES_DB,       value: agenttimes }
+            - { name: PGDATA,            value: /var/lib/postgresql/data/pgdata }
+          ports:
+            - { containerPort: 5432 }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "agenttimes"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+
+        # ---- app: just sleep; we'll exec in and drive it by hand ------------
+        - name: app
+          image: node:22-bookworm
+          workingDir: /src
+          envFrom:
+            - configMapRef: { name: agent-times-config }
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: { name: agent-times-secret, key: ANTHROPIC_API_KEY }
+            - { name: NODE_ENV, value: production }
+          ports:
+            - { containerPort: 3010, name: web }
+            - { containerPort: 3011, name: broker }
+          volumeMounts:
+            - { name: src, mountPath: /src }
+          command: ["bash", "-lc", "echo surgery-pod-ready; sleep infinity"]
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits:   { cpu: "3",    memory: "5Gi" }

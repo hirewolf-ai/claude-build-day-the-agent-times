@@ -13,6 +13,30 @@ edition is done, the paper stamps the **total agent cost** like an old newspaper
 
 ---
 
+## 🌐 Try the live deploy
+
+The app is running on Kubernetes (AWS EKS) behind a LoadBalancer:
+
+**→ http://k8s-claudebu-agenttim-b864d56f00-3091bcd712a9c4c5.elb.us-west-1.amazonaws.com:3010**
+
+You can browse the UI and any saved editions right away. To run **live collection**
+(agents driving a real browser), the browser has to be *yours* — install the extension
+locally and point it at the deployed broker:
+
+1. Load `apps/chrome/extension/` as an unpacked MV3 extension
+   (`chrome://extensions` → Developer mode → Load unpacked).
+2. Point it at the deployed broker — in the extension's service worker console run:
+   ```js
+   chrome.storage.local.set({ serverUrl: "http://k8s-claudebu-agenttim-b864d56f00-3091bcd712a9c4c5.elb.us-west-1.amazonaws.com:3011" })
+   ```
+3. Open the live URL above, set your reader profile, log into X in that Chrome, and
+   type a prompt. The cloud agents now drive *your* browser to collect the news.
+
+> Note: served over plain HTTP (demo). The deploy manifest is [`deploy/k8s.yaml`](./deploy/k8s.yaml) —
+> an imageless single pod that clones this repo, builds, and runs web + broker + Postgres.
+
+---
+
 ## 📺 For judges — start here
 
 - **Demo video:** *(link in the submission form)*
